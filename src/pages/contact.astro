@@ -1,0 +1,143 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="Contact" description="Get in touch — placeholder contact form.">
+  <section class="container contact">
+    <h1>Contact</h1>
+    <p>
+      Placeholder contact-page copy. Replace with Strange Light Media's real
+      copy once the design files are ready.
+    </p>
+
+    <!-- TODO: wire this form to a real backend (Formspree, Netlify Forms,
+         a plain mailto:, etc.) once one is chosen — it currently posts
+         nowhere (action="#"). Whichever it is, have it reject a
+         submission where the honeypot field below is non-empty — the JS
+         guard here only stops simple bots that still execute page
+         scripts; a bot posting straight to the endpoint skips it
+         entirely, so the real check has to happen server-side. -->
+    <form class="contact__form" action="#" method="post">
+      <label>
+        Name
+        <input type="text" name="name" required />
+      </label>
+      <label>
+        Email
+        <input type="email" name="email" required />
+      </label>
+      <label>
+        Message
+        <textarea name="message" rows="5" required></textarea>
+      </label>
+      <!-- Honeypot: hidden from sighted users (off-screen) and screen
+           readers (aria-hidden + removed from tab order), but present in
+           the raw HTML for simple bots that fill in every field to find
+           and fill. A human never sees or reaches it, so any submission
+           with this non-empty is spam. -->
+      <label class="contact__hp" aria-hidden="true">
+        Company
+        <input type="text" name="company" tabindex="-1" autocomplete="off" />
+      </label>
+      <button type="submit">Send</button>
+    </form>
+  </section>
+</BaseLayout>
+
+<style>
+  .contact {
+    padding-block: var(--space-5);
+    max-width: 560px;
+  }
+
+  .contact h1 {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 1.1rem;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+  }
+
+  .contact__form {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+  }
+
+  .contact__form label {
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+  }
+
+  .contact__form input,
+  .contact__form textarea {
+    font: inherit;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: #fff;
+    color: var(--color-text);
+  }
+
+  .contact__form button {
+    justify-self: start;
+    margin-top: var(--space-1);
+    padding: 0.6rem 1.5rem;
+    border: 1px solid var(--color-text);
+    background: none;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .contact__form button:hover {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  /* Off-screen rather than display:none/visibility:hidden — some spam
+     bots specifically skip fields hidden that way, which would defeat
+     the honeypot. This must NOT reuse a generic .visually-hidden
+     utility: that pattern intentionally stays in the accessibility
+     tree for screen readers, which would expose this field to (and
+     risk being filled in by) real assistive-tech users. */
+  .contact__hp {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+</style>
+
+<script>
+  // With view transitions, this script's module only ever loads once per
+  // browser session — astro:page-load (not DOMContentLoaded) is what
+  // re-runs this on every subsequent navigation, so the honeypot check
+  // stays wired to the (new, post-transition) form element on every visit.
+  function initContactForm() {
+    const form = document.querySelector<HTMLFormElement>(".contact__form");
+    const honeypot = form?.querySelector<HTMLInputElement>('[name="company"]');
+
+    form?.addEventListener("submit", (e) => {
+      // A human never sees or fills this field, so a non-empty value means
+      // a bot filled in every input it could find — silently drop the
+      // submission. Only stops bots that execute page JS; the form's
+      // eventual backend still needs to reject this server-side too (see
+      // the TODO above).
+      if (honeypot?.value) {
+        e.preventDefault();
+      }
+    });
+  }
+
+  document.addEventListener("astro:page-load", initContactForm);
+</script>

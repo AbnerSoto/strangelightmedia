@@ -1,0 +1,439 @@
+---
+// One homepage mosaic tile. Unlike the rest of the gallery-rendering
+// components, a tile isn't tied to one category — the client script
+// (see below) redraws it from the *whole site's* combined photo/video
+// pool on each cycle, so a tile that starts out showing a portrait can
+// later show an architecture photo, a video, etc. The container this
+// renders into (see index.astro) carries that combined pool and a
+// slides-by-category lookup once, shared by every tile, rather than
+// each tile repeating its own copy.
+interface Props {
+  thumbSrc: string;
+  thumbAlt: string;
+  thumbKind: "photo" | "video";
+  width: number;
+  height: number;
+  categoryLabel: string;
+  // This tile's *initial* category's full gallery, for the lightbox —
+  // both as the pre-JS/first-paint fallback and as the starting point
+  // the cycling script's aria-label/data-slides swap out from.
+  initialSlidesJson: string;
+  // This seed photo's position within initialSlidesJson, so a click
+  // opens the lightbox on the exact photo the tile is showing — same
+  // behavior as clicking a photo on /work/[category] — rather than
+  // always at the start of the gallery.
+  initialSlideIndex: number;
+}
+
+const {
+  thumbSrc,
+  thumbAlt,
+  thumbKind,
+  width,
+  height,
+  categoryLabel,
+  initialSlidesJson,
+  initialSlideIndex,
+} = Astro.props;
+---
+
+<button
+  type="button"
+  class="category-mosaic-card"
+  data-lightbox-trigger
+  data-slides={initialSlidesJson}
+  data-slide-index={initialSlideIndex}
+  data-aspect-w={width}
+  data-aspect-h={height}
+  aria-label={`View the ${categoryLabel} gallery`}
+  style={`aspect-ratio: ${width} / ${height};`}
+>
+  <img class="category-mosaic-card__img is-active" src={thumbSrc} alt={thumbAlt} loading="lazy" />
+  <img class="category-mosaic-card__img" alt="" />
+  <span
+    class="category-mosaic-card__play"
+    aria-hidden="true"
+    hidden={thumbKind !== "video"}
+  >
+    <span class="category-mosaic-card__play-icon">▶</span>
+  </span>
+</button>
+
+<style>
+  .category-mosaic-card {
+    display: block;
+    position: relative;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    overflow: hidden;
+  }
+
+  /* Once the layout script measures the page and takes over (see
+     initMasonryLayout below), tiles are pulled out of the normal
+     column flow and placed/sized by JS instead, so their position and
+     size can be animated as cycling swaps in photos of other shapes. */
+  :global(.masonry.is-animated-mosaic) .category-mosaic-card {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition:
+      transform 0.6s ease,
+      width 0.6s ease,
+      height 0.6s ease;
+  }
+
+  .category-mosaic-card__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transform: scale(1.08);
+    transition:
+      opacity 1.4s ease,
+      transform 6s ease-out;
+  }
+
+  .category-mosaic-card__img.is-active {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .category-mosaic-card:hover .category-mosaic-card__img.is-active {
+    opacity: 0.85;
+  }
+
+  /* Matches GalleryCard's video play-icon treatment for visual
+     consistency with the category gallery pages. Sits after both img
+     layers in source order (and so above them, with no z-index needed),
+     shown/hidden by the cycling script in step with whichever layer is
+     currently active. */
+  .category-mosaic-card__play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  /* `display: flex` above wins over the browser's default [hidden] {
+     display: none } rule (author styles beat the UA stylesheet
+     regardless of specificity) — see the identical fix for
+     img[hidden] in global.css. Without this, the script below
+     toggling `hidden` on/off would leave the play icon visibly
+     rendered over a photo tile. */
+  .category-mosaic-card__play[hidden] {
+    display: none;
+  }
+
+  /* A solid circular badge rather than a bare glyph + drop shadow —
+     the glyph alone lost contrast against bright or busy thumbnails,
+     since a shadow's effectiveness depends on what's underneath it.
+     A badge gives the icon its own fixed-contrast background
+     regardless of the thumbnail, the same treatment YouTube/Vimeo use.
+     Matches GalleryCard's identical fix. */
+  .category-mosaic-card__play-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    color: #fff;
+    font-size: 2rem;
+    /* The ▶ glyph's own shape sits slightly left of its character box's
+       true center; nudge it right so it looks centered in the circle. */
+    padding-left: 0.2em;
+  }
+</style>
+
+<script>
+  interface Thumb {
+    src: string;
+    alt: string;
+    width: number;
+    height: number;
+    kind: "photo" | "video";
+    category: string;
+    categoryLabel: string;
+    // This thumb's position in its own category's slides array, so a
+    // click can open the lightbox on the exact photo shown.
+    index: number;
+  }
+
+  interface Slide {
+    kind: "photo" | "video";
+    src?: string;
+    vimeoId?: string;
+    thumbnail: string;
+    alt: string;
+    caption: string;
+  }
+
+  function shuffle<T>(items: T[]): T[] {
+    const shuffled = items.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  // Every image should stay up for at least this long before it's cycled
+  // out. Transitions are serialized (one tile at a time), so the tick
+  // interval is derived from this and the actual tile count, rather than
+  // a fixed tick that would only happen to honor this minimum for one
+  // particular number of tiles.
+  const MIN_DISPLAY_MS = 20000;
+
+  interface TileState {
+    el: HTMLElement;
+    layers: HTMLImageElement[];
+    active: HTMLImageElement;
+    current: Thumb | null;
+    playEl: HTMLElement | null;
+  }
+
+  function initMosaicCycling(): (() => void) | null {
+    const container = document.querySelector<HTMLElement>(
+      ".masonry[data-mosaic-pool]",
+    );
+    if (!container) return null;
+
+    let pool: Thumb[];
+    let slidesByCategory: Record<string, Slide[]>;
+    try {
+      const parsedPool = JSON.parse(container.dataset.mosaicPool || "[]");
+      const parsedSlides = JSON.parse(container.dataset.mosaicSlides || "{}");
+      if (!Array.isArray(parsedPool) || parsedPool.length === 0) return null;
+      pool = parsedPool;
+      slidesByCategory = parsedSlides;
+    } catch {
+      return null;
+    }
+
+    const states = Array.from(
+      container.querySelectorAll<HTMLElement>(".category-mosaic-card"),
+    )
+      .map((tile): TileState | null => {
+        const layers = Array.from(
+          tile.querySelectorAll<HTMLImageElement>(".category-mosaic-card__img"),
+        );
+        if (layers.length < 2) return null;
+        const active =
+          layers.find((img) => img.classList.contains("is-active")) ?? layers[0];
+        const playEl = tile.querySelector<HTMLElement>(
+          ".category-mosaic-card__play",
+        );
+        return { el: tile, layers, active, current: null, playEl };
+      })
+      .filter((state): state is TileState => state !== null);
+    if (states.length === 0) return null;
+
+    let queue = shuffle(pool);
+
+    // Pull the next photo/video not currently shown by any tile —
+    // spanning every category now, not just this tile's own — cycling
+    // the queue (and reshuffling once exhausted) until one is found.
+    function draw(excluding: Set<string>): Thumb {
+      for (let attempts = 0; attempts < pool.length * 2; attempts++) {
+        if (queue.length === 0) queue = shuffle(pool);
+        const candidate = queue.shift()!;
+        if (!excluding.has(candidate.src)) return candidate;
+        queue.push(candidate);
+      }
+      // Only reachable if the pool is smaller than the tile count.
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    function advance(index: number, instant: boolean) {
+      const state = states[index];
+      // Exclude every tile's current pick, including this tile's own —
+      // otherwise a draw can hand a tile back what it's already
+      // showing, which "transitions" to an identical image.
+      const excluding = new Set(
+        states
+          .map((s) => s.current?.src)
+          .filter((src): src is string => !!src),
+      );
+      const thumb = draw(excluding);
+      state.current = thumb;
+
+      // The tile may be switching categories: swap in that category's
+      // gallery for the lightbox, update the label, and resize the box
+      // to match (the masonry layout listens for this event).
+      const slides = slidesByCategory[thumb.category];
+      if (slides) state.el.dataset.slides = JSON.stringify(slides);
+      state.el.dataset.slideIndex = String(thumb.index);
+      state.el.setAttribute("aria-label", `View the ${thumb.categoryLabel} gallery`);
+      state.el.dataset.aspectW = String(thumb.width);
+      state.el.dataset.aspectH = String(thumb.height);
+      state.el.dispatchEvent(
+        new CustomEvent("mosaic:aspect-change", { bubbles: true }),
+      );
+
+      const nextLayer = state.layers.find((img) => img !== state.active)!;
+      nextLayer.src = thumb.src;
+      nextLayer.alt = thumb.alt;
+
+      // Toggled in step with the crossfade swap below (not immediately),
+      // so the play icon doesn't appear a beat early, floating over the
+      // still-fading-out previous photo.
+      const showPlay = thumb.kind === "video";
+
+      if (instant) {
+        state.layers.forEach((img) => img.classList.remove("is-active"));
+        nextLayer.classList.add("is-active");
+        state.active = nextLayer;
+        if (state.playEl) state.playEl.hidden = !showPlay;
+        return;
+      }
+
+      // Give the browser a frame to paint the new src before crossfading
+      // to it, so the transition actually has something to animate from.
+      requestAnimationFrame(() => {
+        state.active.classList.remove("is-active");
+        nextLayer.classList.add("is-active");
+        state.active = nextLayer;
+        if (state.playEl) state.playEl.hidden = !showPlay;
+      });
+    }
+
+    // Randomize every tile's photo immediately, rather than leaving the
+    // server-rendered seeds up.
+    states.forEach((_, i) => advance(i, true));
+
+    // Round-robin through every tile, reshuffled each full pass, firing
+    // one transition per tick — never more than one at once. A full pass
+    // takes tickMs * states.length, which is exactly how long any single
+    // tile's image stays up before its next turn, so derive the tick
+    // from the tile count to guarantee the minimum regardless of how
+    // many tiles end up on the page.
+    const tickMs = MIN_DISPLAY_MS / states.length;
+    let order = shuffle(states.map((_, i) => i));
+    let pos = 0;
+    const intervalId = setInterval(() => {
+      if (pos >= order.length) {
+        order = shuffle(order);
+        pos = 0;
+      }
+      advance(order[pos++], false);
+    }, tickMs);
+
+    return () => clearInterval(intervalId);
+  }
+
+  // Measures a spacing token in pixels via a throwaway probe element,
+  // rather than hardcoding a px value that would drift from global.css.
+  function measureSpaceToken(token: string): number {
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.width = `var(${token})`;
+    document.body.appendChild(probe);
+    const px = probe.getBoundingClientRect().width;
+    probe.remove();
+    return px || 16;
+  }
+
+  function columnsForWidth(width: number): number {
+    if (width >= 1024) return 3;
+    if (width >= 640) return 2;
+    return 1;
+  }
+
+  // A small self-packing masonry: unlike the CSS-columns layout it
+  // replaces, this positions each tile explicitly (translate + explicit
+  // width/height) so that a tile resizing — because its cycling swapped
+  // in a photo of a different shape — animates smoothly, and shuffles
+  // every other tile's position to match rather than just growing in
+  // place.
+  function initMasonryLayout(): (() => void) | null {
+    const containers = new Set<HTMLElement>();
+    document.querySelectorAll<HTMLElement>(".category-mosaic-card").forEach((tile) => {
+      const container = tile.closest<HTMLElement>(".masonry");
+      if (container) containers.add(container);
+    });
+    if (containers.size === 0) return null;
+
+    const gapPx = measureSpaceToken("--space-2");
+
+    function layout(container: HTMLElement) {
+      const tiles = Array.from(
+        container.querySelectorAll<HTMLElement>(".category-mosaic-card"),
+      );
+      if (tiles.length === 0) return;
+
+      const columns = columnsForWidth(window.innerWidth);
+      const colWidth = (container.clientWidth - gapPx * (columns - 1)) / columns;
+      const colHeights = new Array(columns).fill(0);
+
+      tiles.forEach((tile) => {
+        const aspectW = Number(tile.dataset.aspectW) || 1;
+        const aspectH = Number(tile.dataset.aspectH) || 1;
+        const height = colWidth * (aspectH / aspectW);
+
+        let col = 0;
+        for (let i = 1; i < columns; i++) {
+          if (colHeights[i] < colHeights[col]) col = i;
+        }
+
+        tile.style.width = `${colWidth}px`;
+        tile.style.height = `${height}px`;
+        tile.style.transform = `translate(${col * (colWidth + gapPx)}px, ${colHeights[col]}px)`;
+
+        colHeights[col] += height + gapPx;
+      });
+
+      container.style.height = `${Math.max(...colHeights) - gapPx}px`;
+      container.classList.add("is-animated-mosaic");
+    }
+
+    const layoutAll = () => containers.forEach(layout);
+    layoutAll();
+
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(layoutAll, 150);
+    };
+    window.addEventListener("resize", onResize);
+
+    containers.forEach((container) => {
+      container.addEventListener("mosaic:aspect-change", () => layout(container));
+    });
+
+    return () => {
+      clearTimeout(resizeTimer);
+      window.removeEventListener("resize", onResize);
+    };
+  }
+
+  // With view transitions, this script's module only ever loads once per
+  // browser session — astro:page-load (not DOMContentLoaded) is what
+  // re-runs init on every subsequent navigation back to this page, and
+  // astro:before-swap runs the returned cleanup functions beforehand so
+  // the cycling interval and resize listener from a previous visit don't
+  // keep running in the background after the tiles are gone.
+  let cleanupFns: Array<() => void> = [];
+
+  function init() {
+    cleanupFns.forEach((fn) => fn());
+    cleanupFns = [initMosaicCycling(), initMasonryLayout()].filter(
+      (fn): fn is () => void => fn !== null,
+    );
+  }
+
+  document.addEventListener("astro:page-load", init);
+  document.addEventListener("astro:before-swap", () => {
+    cleanupFns.forEach((fn) => fn());
+    cleanupFns = [];
+  });
+</script>

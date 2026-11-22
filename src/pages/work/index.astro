@@ -1,0 +1,44 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import CategoryCard from "../../components/CategoryCard.astro";
+import { getCollection } from "astro:content";
+import { getCategoryCards } from "../../lib/categoryCards";
+
+const allEntries = await getCollection("galleries");
+const categoryCards = getCategoryCards(allEntries);
+---
+
+<BaseLayout title="Work" description="Browse photography galleries by category.">
+  <section class="container work-index">
+    <h1>Work</h1>
+    <ul class="work-index__grid">
+      {
+        categoryCards.map((category) => (
+          <li>
+            <CategoryCard category={category} />
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+</BaseLayout>
+
+<style>
+  .work-index {
+    padding-block: var(--space-4) var(--space-6);
+  }
+
+  .work-index h1 {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 1.1rem;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+  }
+
+  .work-index__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--space-3);
+  }
+</style>

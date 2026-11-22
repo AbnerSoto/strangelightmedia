@@ -1,0 +1,444 @@
+---
+// Overlay image viewer. Include once on any page that renders GalleryCards
+// (data-lightbox-trigger elements) — it wires itself up to whatever
+// triggers exist on the page at load time.
+---
+
+<div class="lightbox" id="lightbox" hidden aria-hidden="true">
+  <div class="lightbox__backdrop" data-lightbox-close></div>
+  <div class="lightbox__dialog" role="dialog" aria-modal="true" aria-label="Image viewer">
+    <button type="button" class="lightbox__close" data-lightbox-close aria-label="Close">
+      &#x2715;
+    </button>
+    <button type="button" class="lightbox__prev" data-lightbox-prev aria-label="Previous image">
+      &#x2039;
+    </button>
+    <figure class="lightbox__figure" id="lightbox-figure">
+      <img class="lightbox__image" id="lightbox-image" alt="" />
+      <div class="lightbox__video-wrap" id="lightbox-video-wrap" hidden>
+        <iframe
+          class="lightbox__video"
+          id="lightbox-video"
+          title=""
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowfullscreen
+        ></iframe>
+      </div>
+    </figure>
+    <button type="button" class="lightbox__next" data-lightbox-next aria-label="Next image">
+      &#x203A;
+    </button>
+    <ul class="lightbox__filmstrip" id="lightbox-filmstrip"></ul>
+  </div>
+</div>
+
+<style>
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+  }
+
+  .lightbox[hidden] {
+    display: none;
+  }
+
+  .lightbox__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+  }
+
+  .lightbox__dialog {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .lightbox__figure {
+    margin: 0;
+    max-width: min(90vw, 1400px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .lightbox__image {
+    max-width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+  }
+
+  .lightbox__video-wrap {
+    width: min(90vw, 1400px);
+    max-height: 70vh;
+    aspect-ratio: 16 / 9;
+  }
+
+  .lightbox__video-wrap[hidden] {
+    display: none;
+  }
+
+  .lightbox__video {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .lightbox__close,
+  .lightbox__prev,
+  .lightbox__next {
+    position: absolute;
+    background: none;
+    border: 0;
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: var(--space-1);
+  }
+
+  .lightbox__close {
+    top: var(--space-2);
+    right: var(--space-2);
+  }
+
+  .lightbox__prev {
+    left: var(--space-2);
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .lightbox__next {
+    right: var(--space-2);
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .lightbox__filmstrip {
+    display: flex;
+    gap: var(--space-1);
+    overflow-x: auto;
+    max-width: 90vw;
+    padding-block: var(--space-1);
+    /* Matches the active thumbnail's outline width below — without it,
+       that outline gets clipped by this container's own scroll edge on
+       whichever thumbnail sits first or last. */
+    padding-inline: 2px;
+  }
+
+  /* Flex items shrink to fit their container by default, which was
+     squeezing every thumbnail narrower on small viewports instead of
+     letting the strip overflow and scroll. flex-shrink: 0 keeps each
+     <li> at its natural (image) size so overflow-x: auto above actually
+     kicks in. */
+  .lightbox__filmstrip :global(li) {
+    flex: 0 0 auto;
+  }
+
+  /* :global() because these <img> elements are created by the script
+     below (renderFilmstrip) rather than authored in this file's
+     template, so they never carry the data-astro-cid attribute Astro's
+     scoped styles rely on — a plain scoped selector here would silently
+     never match. */
+  .lightbox__filmstrip :global(img) {
+    height: 60px;
+    width: auto;
+    opacity: 0.5;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: opacity 0.15s ease;
+  }
+
+  .lightbox__filmstrip :global(img.is-active) {
+    opacity: 1;
+    outline: 2px solid var(--color-accent);
+  }
+
+  .lightbox__filmstrip :global(img.is-active:hover) {
+    opacity: 0.85;
+  }
+</style>
+
+<script>
+  // With view transitions, this script's module only ever loads once per
+  // browser session — astro:page-load (not DOMContentLoaded) is what
+  // re-runs initLightbox on every subsequent navigation, and
+  // astro:before-swap runs this cleanup beforehand so a previous page's
+  // document-level keydown listener doesn't keep firing (and duplicate
+  // once per revisit) alongside the new page's.
+  let cleanupLightbox: (() => void) | null = null;
+
+  function initLightbox() {
+    cleanupLightbox?.();
+    cleanupLightbox = null;
+
+    const rootRaw = document.getElementById("lightbox");
+    const imageRaw = document.getElementById("lightbox-image");
+    const videoWrapRaw = document.getElementById("lightbox-video-wrap");
+    const videoRaw = document.getElementById("lightbox-video");
+    const filmstripRaw = document.getElementById("lightbox-filmstrip");
+    const figureRaw = document.getElementById("lightbox-figure");
+    if (
+      !(rootRaw instanceof HTMLElement) ||
+      !(imageRaw instanceof HTMLImageElement) ||
+      !(videoWrapRaw instanceof HTMLElement) ||
+      !(videoRaw instanceof HTMLIFrameElement) ||
+      !(filmstripRaw instanceof HTMLElement) ||
+      !(figureRaw instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    // Re-bind to non-nullable typed consts so the closures below (which
+    // TS otherwise re-widens to the nullable `getElementById` return type)
+    // see the already-checked, precise element types.
+    const root: HTMLElement = rootRaw;
+    const imageEl: HTMLImageElement = imageRaw;
+    const videoWrapEl: HTMLElement = videoWrapRaw;
+    const videoEl: HTMLIFrameElement = videoRaw;
+    const filmstripEl: HTMLElement = filmstripRaw;
+    const figureEl: HTMLElement = figureRaw;
+
+    const triggers = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-lightbox-trigger]"),
+    );
+    if (triggers.length === 0) return;
+
+    interface Slide {
+      kind: "photo" | "video";
+      src?: string; // photo only
+      vimeoId?: string; // video only
+      thumbnail: string; // filmstrip still, either kind
+      alt: string;
+      caption: string;
+    }
+
+    function slideFor(el: HTMLElement): Slide {
+      const vimeoId = el.dataset.vimeoId;
+      if (vimeoId) {
+        return {
+          kind: "video",
+          vimeoId,
+          thumbnail: el.dataset.thumbnail || "",
+          alt: el.dataset.alt || "",
+          caption: el.dataset.caption || "",
+        };
+      }
+      const src = el.dataset.fullSrc || "";
+      return {
+        kind: "photo",
+        src,
+        thumbnail: el.dataset.thumbnail || src,
+        alt: el.dataset.alt || "",
+        caption: el.dataset.caption || "",
+      };
+    }
+
+    // A trigger normally contributes exactly one slide, and every such
+    // trigger on the page shares one page-wide, browsable set (e.g. each
+    // photo on a category gallery page). A trigger can instead carry
+    // data-slides — a JSON array of slides — to open its own
+    // self-contained set scoped to just that trigger (e.g. a homepage
+    // category tile opening that category's whole gallery, without
+    // spilling into the other categories' tiles alongside it).
+    function groupFor(el: HTMLElement): Slide[] | null {
+      const raw = el.dataset.slides;
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    const pageSlides = triggers.filter((el) => !groupFor(el)).map(slideFor);
+
+    let activeSlides: Slide[] = [];
+    let currentIndex = 0;
+    let lastFocused: HTMLElement | null = null;
+
+    function whenImageReady(img: HTMLImageElement): Promise<void> {
+      if (img.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        img.addEventListener("load", () => resolve(), { once: true });
+        img.addEventListener("error", () => resolve(), { once: true });
+      });
+    }
+
+    function centerActiveThumbnail(li: HTMLLIElement) {
+      // Computed manually rather than via scrollIntoView({inline:
+      // "center"}), which measurably undershoots the true center in
+      // testing (off by ~50px in a 326px-wide strip) — likely a browser
+      // quirk combining inline and block alignment on a flex container.
+      // This directly converts the thumbnail's current viewport position
+      // back to a content-relative one (adding back the existing scroll
+      // offset) to get an exact target.
+      const containerRect = filmstripEl.getBoundingClientRect();
+      const liRect = li.getBoundingClientRect();
+      const liCenterInContent =
+        liRect.left - containerRect.left + filmstripEl.scrollLeft + liRect.width / 2;
+      const target = liCenterInContent - containerRect.width / 2;
+      const maxScroll = filmstripEl.scrollWidth - filmstripEl.clientWidth;
+      filmstripEl.scrollLeft = Math.max(0, Math.min(target, maxScroll));
+    }
+
+    function renderFilmstrip() {
+      filmstripEl.innerHTML = "";
+      let activeLi: HTMLLIElement | null = null;
+      const imgs: HTMLImageElement[] = [];
+      activeSlides.forEach((slide, i) => {
+        const li = document.createElement("li");
+        const img = document.createElement("img");
+        img.src = slide.thumbnail;
+        img.alt = "";
+        img.className = i === currentIndex ? "is-active" : "";
+        li.appendChild(img);
+        li.addEventListener("click", () => show(i));
+        filmstripEl.appendChild(li);
+        imgs.push(img);
+        if (i === currentIndex) activeLi = li;
+      });
+      // scrollWidth doesn't reflect each thumbnail's true rendered width
+      // until its image has actually loaded/decoded — centering right
+      // away (even a frame later) can compute against a too-small,
+      // pre-overflow layout and land at scrollLeft 0. Wait for every
+      // thumbnail to finish loading first, then one more frame for that
+      // layout to settle before measuring.
+      Promise.all(imgs.map(whenImageReady)).then(() => {
+        requestAnimationFrame(() => {
+          if (activeLi) centerActiveThumbnail(activeLi);
+        });
+      });
+    }
+
+    function show(index: number) {
+      currentIndex = (index + activeSlides.length) % activeSlides.length;
+      const slide = activeSlides[currentIndex];
+
+      if (slide.kind === "video") {
+        imageEl.hidden = true;
+        videoWrapEl.hidden = false;
+        videoEl.src = `https://player.vimeo.com/video/${slide.vimeoId}`;
+        videoEl.title = slide.caption;
+      } else {
+        // Clearing the iframe's src (rather than just hiding it) stops
+        // playback — otherwise a video keeps running, audibly, behind
+        // whatever photo you navigate to next.
+        videoEl.src = "";
+        videoWrapEl.hidden = true;
+        imageEl.hidden = false;
+        imageEl.src = slide.src || "";
+        imageEl.alt = slide.alt;
+      }
+
+      renderFilmstrip();
+    }
+
+    function open(slides: Slide[], index: number) {
+      activeSlides = slides;
+      lastFocused = document.activeElement as HTMLElement | null;
+      show(index);
+      root.hidden = false;
+      root.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      root.querySelector<HTMLElement>("[data-lightbox-close]")?.focus();
+    }
+
+    function close() {
+      videoEl.src = ""; // stop playback rather than leaving it running hidden
+      root.hidden = true;
+      root.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      lastFocused?.focus();
+    }
+
+    let pageSlideIndex = 0;
+    triggers.forEach((el) => {
+      // Whether a trigger is grouped at all is decided once here (a
+      // page's triggers don't change kind), but a grouped trigger's
+      // *slides* can — e.g. a homepage mosaic tile that cycles into a
+      // different category re-targets its own data-slides — so re-read
+      // it on every click rather than closing over today's value.
+      if (groupFor(el)) {
+        el.addEventListener("click", () => {
+          const group = groupFor(el);
+          // Open on the exact photo the trigger is currently showing
+          // (data-slide-index, kept in sync as a homepage mosaic tile
+          // cycles) — same behavior as clicking a photo on
+          // /work/[category] — rather than always the gallery's start.
+          if (group) open(group, Number(el.dataset.slideIndex) || 0);
+        });
+      } else {
+        const index = pageSlideIndex++;
+        el.addEventListener("click", () => open(pageSlides, index));
+      }
+    });
+
+    root.querySelectorAll("[data-lightbox-close]").forEach((el) => {
+      el.addEventListener("click", close);
+    });
+    root
+      .querySelector("[data-lightbox-prev]")
+      ?.addEventListener("click", () => show(currentIndex - 1));
+    root
+      .querySelector("[data-lightbox-next]")
+      ?.addEventListener("click", () => show(currentIndex + 1));
+
+    // Swipe to navigate on touch devices. Scoped to the figure (the main
+    // image/video area) rather than the whole dialog, so it doesn't
+    // interfere with the filmstrip's own horizontal touch-scrolling.
+    const SWIPE_THRESHOLD = 50;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    figureEl.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length !== 1) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      },
+      { passive: true },
+    );
+    figureEl.addEventListener(
+      "touchend",
+      (e) => {
+        const touch = e.changedTouches[0];
+        if (!touch) return;
+        const dx = touch.clientX - touchStartX;
+        const dy = touch.clientY - touchStartY;
+        // Require the swipe to be clearly horizontal (not a vertical
+        // scroll/pinch gesture) and past a minimum distance.
+        if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          show(currentIndex + (dx < 0 ? 1 : -1));
+        }
+      },
+      { passive: true },
+    );
+
+    const onKeydown = (e: KeyboardEvent) => {
+      if (root.hidden) return;
+      if (e.key === "Escape") close();
+      if (e.key === "ArrowLeft") show(currentIndex - 1);
+      if (e.key === "ArrowRight") show(currentIndex + 1);
+    };
+    document.addEventListener("keydown", onKeydown);
+
+    cleanupLightbox = () => {
+      document.removeEventListener("keydown", onKeydown);
+    };
+  }
+
+  document.addEventListener("astro:page-load", initLightbox);
+  document.addEventListener("astro:before-swap", () => {
+    cleanupLightbox?.();
+    cleanupLightbox = null;
+  });
+</script>

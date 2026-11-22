@@ -1,0 +1,627 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MasonryGrid from "../components/MasonryGrid.astro";
+import MosaicTile from "../components/MosaicTile.astro";
+import Lightbox from "../components/Lightbox.astro";
+import { getCollection } from "astro:content";
+import { getCategoryCards } from "../lib/categoryCards";
+import { toSlide, toThumb } from "../lib/galleryMedia";
+import { withBase } from "../lib/url";
+
+const allEntries = await getCollection("galleries");
+const categoryCards = getCategoryCards(allEntries);
+
+// Every category's full gallery, for the lightbox. A mosaic tile isn't
+// tied to one category — its cycling can swap in any category's photo
+// (see MosaicTile's client script) — so every tile needs access to
+// every category's slides, not just whichever one it started on. This
+// map is embedded once on the container below, rather than once per
+// tile, since every tile would otherwise repeat the same ~4 arrays.
+const slidesBySlug: Record<string, Awaited<ReturnType<typeof toSlide>>[]> = {};
+for (const category of categoryCards) {
+  slidesBySlug[category.slug] = await Promise.all(category.entries.map(toSlide));
+}
+const slidesBySlugJson = JSON.stringify(slidesBySlug);
+
+// One combined thumbnail pool spanning every category, each tagged with
+// which category (and its label) it belongs to — the pool the mosaic's
+// cycling script draws from client-side, embedded once on the container
+// for the same reason as slidesBySlug above.
+const categoryThumbs = await Promise.all(
+  categoryCards.map(async (category) => {
+    const thumbs = await Promise.all(
+      category.entries.map((entry) => toThumb(entry, 700)),
+    );
+    return {
+      category,
+      // index is this thumb's position in the category's own slides
+      // array (built in the same order above), so a click can open the
+      // lightbox on the exact photo/video the tile is showing — same as
+      // clicking a photo on /work/[category] — rather than always at 0.
+      thumbs: thumbs.map((thumb, index) => ({
+        ...thumb,
+        category: category.slug,
+        categoryLabel: category.label,
+        index,
+      })),
+    };
+  }),
+);
+const allThumbsJson = JSON.stringify(categoryThumbs.flatMap((c) => c.thumbs));
+
+// A fixed number of tiles, seeded round-robin across categories so the
+// mosaic starts out mixed even before client JS randomizes it further
+// (and keeps cycling it across every category from then on).
+const TILE_COUNT = 12;
+const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
+  const { category, thumbs } = categoryThumbs[i % categoryThumbs.length];
+  const round = Math.floor(i / categoryThumbs.length);
+  return {
+    thumb: thumbs[round % thumbs.length],
+    categoryLabel: category.label,
+    initialSlidesJson: JSON.stringify(slidesBySlug[category.slug]),
+  };
+});
+---
+
+<BaseLayout
+  title="Strange Light Media"
+  description="Placeholder homepage description — replace with Strange Light Media's real copy."
+>
+  <section class="hero-banner">
+    <canvas
+      class="hero-banner__canvas"
+      id="hero-kinetic-bg"
+      aria-hidden="true"
+    ></canvas>
+    <div class="hero container">
+      <h1>Strange Light Media</h1>
+      <p class="hero__tagline">
+        Placeholder tagline — replace with real homepage copy.
+      </p>
+      <a href={withBase("/work")} class="hero__cta">View the work &rarr;</a>
+    </div>
+  </section>
+
+  <section class="featured container">
+    <MasonryGrid data-mosaic-pool={allThumbsJson} data-mosaic-slides={slidesBySlugJson}>
+      {
+        tileSeeds.map((seed) => (
+          <MosaicTile
+            thumbSrc={seed.thumb.src}
+            thumbAlt={seed.thumb.alt}
+            thumbKind={seed.thumb.kind}
+            width={seed.thumb.width}
+            height={seed.thumb.height}
+            categoryLabel={seed.categoryLabel}
+            initialSlidesJson={seed.initialSlidesJson}
+            initialSlideIndex={seed.thumb.index}
+          />
+        ))
+      }
+    </MasonryGrid>
+  </section>
+
+  <Lightbox />
+</BaseLayout>
+
+<style>
+  .hero-banner {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-banner__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+  }
+
+  .hero {
+    position: relative;
+    padding-block: var(--space-6);
+    max-width: 700px;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.75rem, 8vw, 5.5rem);
+    letter-spacing: 0.04em;
+    line-height: 0.95;
+  }
+
+  .hero__tagline {
+    margin-top: var(--space-2);
+    color: var(--color-text-muted);
+  }
+
+  .hero__cta {
+    display: inline-block;
+    margin-top: var(--space-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.85rem;
+    color: var(--color-accent);
+    border-bottom: 1px solid currentColor;
+    padding-bottom: 2px;
+  }
+
+  .featured {
+    padding-bottom: var(--space-6);
+  }
+</style>
+
+<script>
+  interface Circle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    r: number;
+    lineWidth: number;
+    opacity: number;
+    // 0 draws a plain circle outline; 3+ draws a regular polygon (that
+    // many sides) inscribed in the same radius instead, for a more
+    // angular, faceted look mixed in among the circles.
+    sides: number;
+    rotation: number;
+    rotationSpeed: number;
+    // Each shape alternates between an idle phase (holding `sides`) and a
+    // morph phase (smoothly reshaping from `fromSides` to `toSides`).
+    // idleFrames/MORPH_FRAMES are sized so only ~20% of shapes are
+    // mid-morph at any moment, and morphTimer starts pre-randomized so
+    // shapes don't all start their cycles in lockstep.
+    morphing: boolean;
+    fromSides: number;
+    toSides: number;
+    morphTimer: number;
+    idleFrames: number;
+    // Eased 0-1 toward 1 while the cursor is over this shape, toward 0
+    // otherwise — drives a brightened, bolder highlight in draw().
+    hoverAmount: number;
+    // Most shapes bounce off the edges forever (existing behavior). A
+    // minority instead pass straight through and get removed once fully
+    // offscreen — see the population-management block in step().
+    bounces: boolean;
+  }
+
+  // With view transitions, this script's module only ever loads once per
+  // browser session — astro:page-load (not DOMContentLoaded) is what
+  // re-runs initHeroKineticBackground on every subsequent navigation back
+  // to this page, and astro:before-swap runs this cleanup beforehand so
+  // the previous instance's rAF loop and global listeners don't keep
+  // running in the background against a now-removed canvas.
+  let cleanupKinetic: (() => void) | null = null;
+
+  function initHeroKineticBackground() {
+    cleanupKinetic?.();
+    cleanupKinetic = null;
+
+    const canvasRaw = document.getElementById("hero-kinetic-bg");
+    if (!(canvasRaw instanceof HTMLCanvasElement)) return;
+    const canvas: HTMLCanvasElement = canvasRaw;
+    const banner = canvas.closest<HTMLElement>(".hero-banner");
+    const ctx = canvas.getContext("2d");
+    if (!banner || !ctx) return;
+
+    const LINE_DISTANCE = 170;
+    // Near-black (--color-text) rather than the warm terracotta accent —
+    // a cooler, higher-contrast ink tone reads more technical/edgy than
+    // the friendlier warm hue.
+    const SHAPE_COLOR = "26, 26, 26";
+    const LINE_COLOR = "26, 26, 26";
+
+    // Assuming ~60fps: a 2s morph with an average 8s idle gap between
+    // morphs works out to ~120 / (120 + 480) = 20% of shapes mid-morph
+    // at any moment, on average, once many shapes are running staggered,
+    // independently-timed cycles.
+    const MORPH_FRAMES = 120;
+    const IDLE_FRAMES_MIN = 360;
+    const IDLE_FRAMES_MAX = 600;
+    const SHAPE_OPTIONS = [0, 3, 4, 5, 6]; // 0 = circle, 3-6 = polygon sides
+
+    function randomIdleFrames() {
+      return (
+        IDLE_FRAMES_MIN + Math.random() * (IDLE_FRAMES_MAX - IDLE_FRAMES_MIN)
+      );
+    }
+
+    function randomOtherShape(current: number) {
+      const options = SHAPE_OPTIONS.filter((s) => s !== current);
+      return options[Math.floor(Math.random() * options.length)];
+    }
+
+    function easeInOutCubic(t: number) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    // Distance from center to a regular polygon's boundary at a given
+    // angle (relative to the shape's own rotation) — constant (the
+    // circle's radius) when sides is 0. Sampling this at many angles is
+    // what lets a shape morph smoothly between different side counts (or
+    // to/from a circle): interpolate the radius per-angle, not the shape
+    // outright.
+    function shapeRadiusAt(theta: number, sides: number, r: number) {
+      if (sides < 3) return r;
+      const segment = (Math.PI * 2) / sides;
+      const local = ((theta % segment) + segment) % segment - segment / 2;
+      return (r * Math.cos(Math.PI / sides)) / Math.cos(local);
+    }
+
+    let width = 0;
+    let height = 0;
+    let circles: Circle[] = [];
+    let mouseX: number | null = null;
+    let mouseY: number | null = null;
+
+    // Ghost trail: recent positions/forms of whichever shape is currently
+    // hovered, oldest first, rendered faintest to most recent. Decays by
+    // dropping its oldest entry each frame once nothing is hovered, so it
+    // shortens away rather than vanishing abruptly.
+    interface TrailPoint {
+      x: number;
+      y: number;
+      r: number;
+      sides: number;
+      rotation: number;
+    }
+    const TRAIL_MAX_LENGTH = 16;
+    let trail: TrailPoint[] = [];
+    let trailOwner: Circle | null = null;
+
+    // Population management for the non-bouncing shapes that pass through
+    // the edge and get removed (see step()): targetCount is the steady
+    // -state total, and respawnFrames tracks a delay before each removed
+    // shape is replaced so the total can dip below target for a bit
+    // rather than snapping back instantly — capped at
+    // MAX_POPULATION_DIP so the count never strays more than that from
+    // targetCount.
+    let targetCount = 0;
+    let respawnFrames: number[] = [];
+    const MAX_POPULATION_DIP = 3;
+
+    function spawnCircle(): Circle {
+      // Roughly a third of shapes start as angular polygons (3-6 sides),
+      // the rest as circles — each will go on to morph between shapes on
+      // its own staggered cycle regardless of where it starts.
+      const sides = Math.random() < 0.35 ? 3 + Math.floor(Math.random() * 4) : 0;
+      const idleFrames = randomIdleFrames();
+      return {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.45,
+        vy: (Math.random() - 0.5) * 0.45,
+        r: 18 + Math.random() * 46,
+        // Varying these per circle (hairline/faint vs. bold/solid) is
+        // what reads as a technical schematic rather than uniform,
+        // cartoonish bubbles — mimics different "layers" of emphasis on
+        // a diagram.
+        lineWidth: 0.5 + Math.random() * 2,
+        opacity: 0.05 + Math.random() * 0.12, // max stays below the 0.175 flat value set earlier
+        sides,
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: (Math.random() - 0.5) * 0.01,
+        morphing: false,
+        fromSides: sides,
+        toSides: sides,
+        // Pre-randomized within the idle window so shapes don't all
+        // start their morph cycles in sync.
+        morphTimer: Math.random() * idleFrames,
+        idleFrames,
+        hoverAmount: 0,
+        // Most shapes bounce; a minority pass through the edge instead.
+        bounces: Math.random() < 0.65,
+      };
+    }
+
+    function seedCircles() {
+      targetCount = Math.max(6, Math.round((width * height) / 65000));
+      circles = Array.from({ length: targetCount }, spawnCircle);
+      respawnFrames = [];
+    }
+
+    function resize() {
+      const rect = banner!.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      seedCircles();
+    }
+
+    // Equal-mass elastic collision: swap the velocity component along the
+    // line connecting the two centers, leave the perpendicular component
+    // untouched — this is what makes the lines between circles feel
+    // "kinetic" rather than just decorative, since their length and
+    // opacity keep shifting as circles actually bounce off each other.
+    function resolveCollision(a: Circle, b: Circle) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 0.0001;
+      const minDist = a.r + b.r;
+      if (dist >= minDist) return;
+
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const overlap = (minDist - dist) / 2;
+      a.x -= nx * overlap;
+      a.y -= ny * overlap;
+      b.x += nx * overlap;
+      b.y += ny * overlap;
+
+      const aN = a.vx * nx + a.vy * ny;
+      const bN = b.vx * nx + b.vy * ny;
+      a.vx += (bN - aN) * nx;
+      a.vy += (bN - aN) * ny;
+      b.vx += (aN - bN) * nx;
+      b.vy += (aN - bN) * ny;
+    }
+
+    function step() {
+      let currentHoveredCircle: Circle | null = null;
+      for (const c of circles) {
+        c.x += c.vx;
+        c.y += c.vy;
+        c.rotation += c.rotationSpeed;
+
+        const hovered =
+          mouseX !== null &&
+          mouseY !== null &&
+          Math.hypot(c.x - mouseX, c.y - mouseY) < c.r;
+        if (hovered) currentHoveredCircle = c;
+        c.hoverAmount += ((hovered ? 1 : 0) - c.hoverAmount) * 0.15;
+
+        c.morphTimer++;
+        if (!c.morphing) {
+          if (c.morphTimer >= c.idleFrames) {
+            c.morphing = true;
+            c.morphTimer = 0;
+            c.fromSides = c.sides;
+            c.toSides = randomOtherShape(c.sides);
+          }
+        } else if (c.morphTimer >= MORPH_FRAMES) {
+          c.morphing = false;
+          c.morphTimer = 0;
+          c.sides = c.toSides;
+          c.idleFrames = randomIdleFrames();
+        }
+
+        if (c.bounces) {
+          if (c.x - c.r < 0) {
+            c.x = c.r;
+            c.vx = Math.abs(c.vx);
+          } else if (c.x + c.r > width) {
+            c.x = width - c.r;
+            c.vx = -Math.abs(c.vx);
+          }
+          if (c.y - c.r < 0) {
+            c.y = c.r;
+            c.vy = Math.abs(c.vy);
+          } else if (c.y + c.r > height) {
+            c.y = height - c.r;
+            c.vy = -Math.abs(c.vy);
+          }
+        }
+      }
+      for (let i = 0; i < circles.length; i++) {
+        for (let j = i + 1; j < circles.length; j++) {
+          resolveCollision(circles[i], circles[j]);
+        }
+      }
+
+      // Non-bouncing shapes that have fully left the visible area
+      // disappear instead of reflecting. Each is eventually replaced —
+      // immediately if the population has already dipped by
+      // MAX_POPULATION_DIP, otherwise after a random delay — so the
+      // total count stays within that many of targetCount rather than
+      // snapping straight back.
+      const survivors: Circle[] = [];
+      let removed = 0;
+      for (const c of circles) {
+        const offscreen =
+          !c.bounces &&
+          (c.x + c.r < 0 ||
+            c.x - c.r > width ||
+            c.y + c.r < 0 ||
+            c.y - c.r > height);
+        if (offscreen) {
+          removed++;
+        } else {
+          survivors.push(c);
+        }
+      }
+      circles = survivors;
+      for (let i = 0; i < removed; i++) {
+        // Deliberately ignores respawnFrames.length: a queued-but-not-yet-
+        // spawned replacement doesn't help anyone looking at the screen
+        // right now, so only the actually-visible count should gate the
+        // dip cap, not the count "on paper."
+        const visibleDeficit = targetCount - circles.length;
+        if (visibleDeficit >= MAX_POPULATION_DIP) {
+          circles.push(spawnCircle());
+        } else {
+          respawnFrames.push(30 + Math.random() * 120); // 0.5-2.5s @ 60fps
+        }
+      }
+      for (let i = respawnFrames.length - 1; i >= 0; i--) {
+        respawnFrames[i]--;
+        if (respawnFrames[i] <= 0) {
+          circles.push(spawnCircle());
+          respawnFrames.splice(i, 1);
+        }
+      }
+
+      if (currentHoveredCircle) {
+        if (trailOwner !== currentHoveredCircle) {
+          trail = [];
+          trailOwner = currentHoveredCircle;
+        }
+        trail.push({
+          x: currentHoveredCircle.x,
+          y: currentHoveredCircle.y,
+          r: currentHoveredCircle.r,
+          sides: currentHoveredCircle.sides,
+          rotation: currentHoveredCircle.rotation,
+        });
+        if (trail.length > TRAIL_MAX_LENGTH) trail.shift();
+      } else if (trail.length > 0) {
+        trail.shift();
+        if (trail.length === 0) trailOwner = null;
+      }
+    }
+
+    function draw() {
+      ctx!.clearRect(0, 0, width, height);
+
+      for (let i = 0; i < circles.length; i++) {
+        for (let j = i + 1; j < circles.length; j++) {
+          const a = circles[i];
+          const b = circles[j];
+          const dist = Math.hypot(b.x - a.x, b.y - a.y);
+          if (dist >= LINE_DISTANCE) continue;
+          const alpha = 0.198 * (1 - dist / LINE_DISTANCE);
+          ctx!.strokeStyle = `rgba(${LINE_COLOR}, ${alpha})`;
+          ctx!.lineWidth = 1;
+          ctx!.beginPath();
+          ctx!.moveTo(a.x, a.y);
+          ctx!.lineTo(b.x, b.y);
+          ctx!.stroke();
+        }
+      }
+
+      // Ghost trail for the hovered shape: oldest entries faintest, drawn
+      // before the live shapes so the real, brightest copy ends up on top.
+      const TRAIL_MAX_ALPHA = 0.14;
+      trail.forEach((p, i) => {
+        const alpha = TRAIL_MAX_ALPHA * ((i + 1) / trail.length);
+        ctx!.strokeStyle = `rgba(${SHAPE_COLOR}, ${alpha})`;
+        ctx!.lineWidth = 1;
+        ctx!.beginPath();
+        if (p.sides < 3) {
+          ctx!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        } else {
+          for (let s = 0; s < p.sides; s++) {
+            const angle = p.rotation + (s / p.sides) * Math.PI * 2;
+            const px = p.x + Math.cos(angle) * p.r;
+            const py = p.y + Math.sin(angle) * p.r;
+            s === 0 ? ctx!.moveTo(px, py) : ctx!.lineTo(px, py);
+          }
+          ctx!.closePath();
+        }
+        ctx!.stroke();
+      });
+
+      const SHAPE_SEGMENTS = 48;
+      for (const c of circles) {
+        // Brighten and thicken toward a hovered look as hoverAmount eases
+        // toward 1, rather than snapping instantly — capped well below
+        // full opacity so it reads as a highlight, not a different shape.
+        const drawOpacity = c.opacity + (0.45 - c.opacity) * c.hoverAmount;
+        const drawLineWidth = c.lineWidth + c.hoverAmount * 1.5;
+        ctx!.strokeStyle = `rgba(${SHAPE_COLOR}, ${drawOpacity})`;
+        ctx!.lineWidth = drawLineWidth;
+        ctx!.beginPath();
+
+        if (c.morphing) {
+          // Sampling shapeRadiusAt at fixed angles is the simplest way to
+          // blend two different polygons' radii, but it makes a sharp
+          // vertex wiggle slightly as rotation shifts which sample lands
+          // nearest it — acceptable for a 2s transition, but drawing the
+          // idle (non-morphing) shape from its exact vertices below keeps
+          // corners genuinely crisp and static the other ~80% of the time.
+          const morphT = easeInOutCubic(c.morphTimer / MORPH_FRAMES);
+          for (let i = 0; i <= SHAPE_SEGMENTS; i++) {
+            const theta = (i / SHAPE_SEGMENTS) * Math.PI * 2;
+            const localTheta = theta - c.rotation;
+            const r =
+              shapeRadiusAt(localTheta, c.fromSides, c.r) +
+              (shapeRadiusAt(localTheta, c.toSides, c.r) -
+                shapeRadiusAt(localTheta, c.fromSides, c.r)) *
+                morphT;
+            const px = c.x + Math.cos(theta) * r;
+            const py = c.y + Math.sin(theta) * r;
+            i === 0 ? ctx!.moveTo(px, py) : ctx!.lineTo(px, py);
+          }
+        } else if (c.sides < 3) {
+          ctx!.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        } else {
+          for (let i = 0; i < c.sides; i++) {
+            const angle = c.rotation + (i / c.sides) * Math.PI * 2;
+            const px = c.x + Math.cos(angle) * c.r;
+            const py = c.y + Math.sin(angle) * c.r;
+            i === 0 ? ctx!.moveTo(px, py) : ctx!.lineTo(px, py);
+          }
+        }
+        ctx!.closePath();
+        ctx!.stroke();
+      }
+    }
+
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    let frameId = 0;
+    function loop() {
+      step();
+      draw();
+      frameId = requestAnimationFrame(loop);
+    }
+
+    resize();
+    draw();
+    if (!reducedMotion) {
+      frameId = requestAnimationFrame(loop);
+
+      // Pointer tracking only runs alongside the animation loop — with
+      // reduced motion, the background stays a single static frame and
+      // skips hover feedback too, rather than reacting to the cursor.
+      canvas.style.pointerEvents = "auto";
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = banner!.getBoundingClientRect();
+        mouseX = e.clientX - rect.left;
+        mouseY = e.clientY - rect.top;
+      });
+      canvas.addEventListener("mouseleave", () => {
+        mouseX = null;
+        mouseY = null;
+      });
+    }
+
+    let resizeTimeout = 0;
+    const onResize = () => {
+      window.clearTimeout(resizeTimeout);
+      resizeTimeout = window.setTimeout(() => {
+        resize();
+        draw();
+      }, 150);
+    };
+    window.addEventListener("resize", onResize);
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(frameId);
+      } else if (!reducedMotion) {
+        frameId = requestAnimationFrame(loop);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    cleanupKinetic = () => {
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(resizeTimeout);
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }
+
+  document.addEventListener("astro:page-load", initHeroKineticBackground);
+  document.addEventListener("astro:before-swap", () => {
+    cleanupKinetic?.();
+    cleanupKinetic = null;
+  });
+</script>
