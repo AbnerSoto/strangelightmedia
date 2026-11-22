@@ -3,18 +3,19 @@
 A portfolio site built with [Astro](https://astro.build), duplicated from an
 existing production site's framework as a starting point for a new design.
 
-Modeled on the information architecture and interaction pattern of
-high-end photography/multimedia portfolios: category galleries, an
-animated homepage mosaic that cycles across every category (photos and
-video alike), a lightbox viewer with keyboard/swipe navigation, and a
-simple about/contact — with e-commerce, client proofing, and CMS admin
+Modeled on the information architecture and interaction pattern of a
+Sacramento marketing/production agency homepage (hero, positioning,
+services, work showcase, process, CTA) plus category galleries, a
+lightbox viewer with keyboard/swipe navigation, and a simple
+about/contact — with e-commerce, client proofing, and CMS admin
 tooling intentionally left out. Content is hand-edited in the repo;
 there's no admin UI.
 
 > **Status:** the brand identity from Strange Light Media's brand deck is
 > applied (colors, type, logo mark, voice) — see "Brand identity" below.
-> Gallery images and category names are still placeholders; see
-> "Replacing the placeholder content" below.
+> The homepage body was rebuilt around that identity, modeled on a
+> handful of reference agency sites. Gallery images and category names
+> are still placeholders; see "Replacing the placeholder content" below.
 
 ## Brand identity
 
@@ -69,11 +70,11 @@ src/
   data/categories.json     # category slugs/labels/order — drives /work routes
   lib/galleryMedia.ts      # shared photo/video helpers (aspect ratio, thumbnails,
                             # lightbox slides) used across components and pages
-  components/              # Nav, Footer, Seo, MasonryGrid, GalleryCard,
-                            # MosaicTile (animated homepage grid), Lightbox
+  components/              # Nav, Footer, Seo, MasonryGrid, GalleryCard, Lightbox
   layouts/BaseLayout.astro # <head>, Nav, Footer, global.css, view transitions
   pages/
-    index.astro             # home: kinetic hero background + animated mosaic
+    index.astro             # home: kinetic hero + agency-style page (hero,
+                            # positioning, services, work, process, CTA)
     work/index.astro        # category index
     work/[category].astro   # one gallery page per category
     about.astro

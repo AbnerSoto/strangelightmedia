@@ -1,67 +1,47 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import MasonryGrid from "../components/MasonryGrid.astro";
-import MosaicTile from "../components/MosaicTile.astro";
-import Lightbox from "../components/Lightbox.astro";
-import { getCollection } from "astro:content";
-import { getCategoryCards } from "../lib/categoryCards";
-import { toSlide, toThumb } from "../lib/galleryMedia";
+import { Image } from "astro:assets";
 import { withBase } from "../lib/url";
 
-const allEntries = await getCollection("galleries");
-const categoryCards = getCategoryCards(allEntries);
+import workPortrait1 from "../assets/homepage/work-portrait-1.webp";
+import workPortrait2 from "../assets/homepage/work-portrait-2.webp";
+import workArchitecture1 from "../assets/homepage/work-architecture-1.webp";
+import workArchitecture2 from "../assets/homepage/work-architecture-2.webp";
+import workProduct1 from "../assets/homepage/work-product-1.webp";
+import workProduct2 from "../assets/homepage/work-product-2.webp";
 
-// Every category's full gallery, for the lightbox. A mosaic tile isn't
-// tied to one category — its cycling can swap in any category's photo
-// (see MosaicTile's client script) — so every tile needs access to
-// every category's slides, not just whichever one it started on. This
-// map is embedded once on the container below, rather than once per
-// tile, since every tile would otherwise repeat the same ~4 arrays.
-const slidesBySlug: Record<string, Awaited<ReturnType<typeof toSlide>>[]> = {};
-for (const category of categoryCards) {
-  slidesBySlug[category.slug] = await Promise.all(category.entries.map(toSlide));
-}
-const slidesBySlugJson = JSON.stringify(slidesBySlug);
+// Temporary: sourced from the live abnersoto.com site as placeholder
+// imagery for this homepage redesign, until Strange Light Media has its
+// own shoot to pull from — swap these for real work whenever it exists.
+const workSamples = [
+  { src: workArchitecture1, alt: "Primary bedroom interior, warm evening light", category: "architecture" },
+  { src: workPortrait1, alt: "Studio portrait, subject smiling with arms crossed", category: "portraits" },
+  { src: workProduct1, alt: "Product still life", category: "product" },
+  { src: workProduct2, alt: "Product still life", category: "product" },
+  { src: workPortrait2, alt: "Studio portrait", category: "portraits" },
+  { src: workArchitecture2, alt: "Architectural interior", category: "architecture" },
+];
 
-// One combined thumbnail pool spanning every category, each tagged with
-// which category (and its label) it belongs to — the pool the mosaic's
-// cycling script draws from client-side, embedded once on the container
-// for the same reason as slidesBySlug above.
-const categoryThumbs = await Promise.all(
-  categoryCards.map(async (category) => {
-    const thumbs = await Promise.all(
-      category.entries.map((entry) => toThumb(entry, 700)),
-    );
-    return {
-      category,
-      // index is this thumb's position in the category's own slides
-      // array (built in the same order above), so a click can open the
-      // lightbox on the exact photo/video the tile is showing — same as
-      // clicking a photo on /work/[category] — rather than always at 0.
-      thumbs: thumbs.map((thumb, index) => ({
-        ...thumb,
-        category: category.slug,
-        categoryLabel: category.label,
-        index,
-      })),
-    };
-  }),
-);
-const allThumbsJson = JSON.stringify(categoryThumbs.flatMap((c) => c.thumbs));
+const audiences = [
+  { name: "Real estate agents", body: "Listings that stop the scroll, and a personal brand that wins the next listing." },
+  { name: "Builders & developers", body: "Launch films and campaigns that sell the project before it's finished." },
+  { name: "Local businesses", body: "Content with real character, made in Sacramento." },
+];
 
-// A fixed number of tiles, seeded round-robin across categories so the
-// mosaic starts out mixed even before client JS randomizes it further
-// (and keeps cycling it across every category from then on).
-const TILE_COUNT = 12;
-const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
-  const { category, thumbs } = categoryThumbs[i % categoryThumbs.length];
-  const round = Math.floor(i / categoryThumbs.length);
-  return {
-    thumb: thumbs[round % thumbs.length],
-    categoryLabel: category.label,
-    initialSlidesJson: JSON.stringify(slidesBySlug[category.slug]),
-  };
-});
+const services = [
+  { num: "01", name: "Film & video", body: "Brand films, listing tours and short cuts for social." },
+  { num: "02", name: "Photography", body: "Property, people and product, shot with real light." },
+  { num: "03", name: "Social content", body: "Reels, carousels and monthly content that looks like you." },
+  { num: "04", name: "Campaigns & brand", body: "Strategy, ads and launches built around the visuals." },
+];
+
+const steps = [
+  { name: "Find the light", body: "A quick call to find the real story and the angle no one else is shooting." },
+  { name: "Shoot it like a film", body: "On location or in studio, composed and lit with intention — not a flat listing shot." },
+  { name: "Launch, then keep going", body: "Delivered fast, ready for the feed, the site, the sign." },
+];
+
+const traits = ["Cinematic", "Unexpected", "Sharp", "Rooted"];
 ---
 
 <BaseLayout
@@ -80,30 +60,88 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
       <p class="hero__tagline">
         Marketing that looks like nothing else in the valley.
       </p>
-      <a href={withBase("/work")} class="hero__cta">View the work &rarr;</a>
+      <div class="hero__ctas">
+        <a href={withBase("/work")} class="hero__cta">View the work &rarr;</a>
+        <a href={withBase("/contact")} class="hero__cta hero__cta--secondary">Get in touch</a>
+      </div>
     </div>
   </section>
 
-  <section class="featured container">
-    <MasonryGrid data-mosaic-pool={allThumbsJson} data-mosaic-slides={slidesBySlugJson}>
+  <section class="container positioning">
+    <h2 class="positioning__statement">
+      We make Sacramento brands <span class="accent">impossible to scroll past.</span>
+    </h2>
+    <ul class="positioning__audiences">
       {
-        tileSeeds.map((seed) => (
-          <MosaicTile
-            thumbSrc={seed.thumb.src}
-            thumbAlt={seed.thumb.alt}
-            thumbKind={seed.thumb.kind}
-            width={seed.thumb.width}
-            height={seed.thumb.height}
-            categoryLabel={seed.categoryLabel}
-            initialSlidesJson={seed.initialSlidesJson}
-            initialSlideIndex={seed.thumb.index}
-          />
+        audiences.map((a) => (
+          <li>
+            <h3>{a.name}</h3>
+            <p>{a.body}</p>
+          </li>
         ))
       }
-    </MasonryGrid>
+    </ul>
   </section>
 
-  <Lightbox />
+  <section class="container services">
+    <p class="section-eyebrow">What we do</p>
+    <ul class="services__grid">
+      {
+        services.map((s) => (
+          <li class="services__card">
+            <p class="services__num">{s.num}</p>
+            <h3>{s.name}</h3>
+            <p>{s.body}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  <section class="container work">
+    <div class="work__header">
+      <p class="section-eyebrow">Recent work</p>
+      <a href={withBase("/work")} class="work__all">See all work &rarr;</a>
+    </div>
+    <ul class="work__grid">
+      {
+        workSamples.map((w) => (
+          <li>
+            <a href={withBase(`/work/${w.category}`)}>
+              <Image src={w.src} alt={w.alt} width={700} />
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  <section class="container process">
+    <p class="section-eyebrow">How it works</p>
+    <ol class="process__steps">
+      {
+        steps.map((step, i) => (
+          <li>
+            <p class="process__num">{String(i + 1).padStart(2, "0")}</p>
+            <h3>{step.name}</h3>
+            <p>{step.body}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </section>
+
+  <section class="container traits">
+    <ul class="traits__list">
+      {traits.map((trait) => <li>{trait}</li>)}
+    </ul>
+  </section>
+
+  <section class="container cta">
+    <h2>Make it seen.</h2>
+    <p>Tell us about the project and we'll follow up to talk dates and details.</p>
+    <a href={withBase("/contact")} class="hero__cta">Get in touch &rarr;</a>
+  </section>
 </BaseLayout>
 
 <style>
@@ -162,9 +200,16 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
     color: var(--color-text-muted);
   }
 
+  .hero__ctas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
   .hero__cta {
     display: inline-block;
-    margin-top: var(--space-3);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     font-size: 0.85rem;
@@ -173,8 +218,240 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
     padding-bottom: 2px;
   }
 
-  .featured {
-    padding-bottom: var(--space-6);
+  .hero__cta--secondary {
+    color: var(--color-text-muted);
+  }
+
+  .accent {
+    color: var(--color-accent);
+  }
+
+  .section-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+  }
+
+  /* Positioning / audience */
+  .positioning {
+    padding-block: var(--space-6);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .positioning__statement {
+    font-size: clamp(1.75rem, 4.5vw, 2.75rem);
+    line-height: 1.15;
+    max-width: 18ch;
+    margin-bottom: var(--space-5);
+  }
+
+  .positioning__audiences {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  @media (min-width: 760px) {
+    .positioning__audiences {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .positioning__audiences h3 {
+    font-size: 1.05rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .positioning__audiences p {
+    color: var(--color-text-muted);
+  }
+
+  /* Services */
+  .services {
+    padding-block: var(--space-6);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .services__grid {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  @media (min-width: 640px) {
+    .services__grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .services__grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  .services__card {
+    border-top: 2px solid var(--color-border);
+    padding-top: var(--space-2);
+  }
+
+  .services__num {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--color-accent);
+    margin-bottom: var(--space-2);
+  }
+
+  .services__card h3 {
+    font-size: 1.05rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .services__card p:not(.services__num) {
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+  }
+
+  /* Work */
+  .work {
+    padding-block: var(--space-6);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .work__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .work__header .section-eyebrow {
+    margin-bottom: 0;
+  }
+
+  .work__all {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+
+  .work__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+
+  @media (min-width: 760px) {
+    .work__grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .work__grid :global(img) {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    transition: opacity 0.2s ease;
+  }
+
+  .work__grid a:hover :global(img) {
+    opacity: 0.85;
+  }
+
+  /* Process */
+  .process {
+    padding-block: var(--space-6);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .process__steps {
+    display: grid;
+    gap: var(--space-4);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  @media (min-width: 760px) {
+    .process__steps {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .process__num {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 2.25rem;
+    line-height: 1;
+    color: var(--color-accent);
+    margin-bottom: var(--space-2);
+  }
+
+  .process__steps h3 {
+    font-size: 1.05rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .process__steps p:not(.process__num) {
+    color: var(--color-text-muted);
+  }
+
+  /* Traits band */
+  .traits {
+    padding-block: var(--space-4);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .traits__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .traits__list li {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+  }
+
+  .traits__list li::before {
+    content: "";
+    display: inline-block;
+    width: 0.4em;
+    height: 0.4em;
+    border-radius: 50%;
+    background: var(--color-accent);
+    margin-right: 0.5em;
+    vertical-align: middle;
+  }
+
+  /* Closing CTA */
+  .cta {
+    padding-block: var(--space-6);
+    border-top: 1px solid var(--color-border);
+    text-align: center;
+  }
+
+  .cta h2 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    margin-bottom: var(--space-2);
+  }
+
+  .cta p {
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+  }
+
+  .cta .hero__cta {
+    display: inline-block;
   }
 </style>
 
