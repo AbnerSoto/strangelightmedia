@@ -6,7 +6,7 @@ const year = new Date().getFullYear();
 
 <footer class="site-footer">
   <div class="container site-footer__inner">
-    <p>&copy; {year} Strange Light Media. All rights reserved.</p>
+    <p>&copy; {year} Strange Light Media · Sacramento, CA</p>
     <ul class="site-footer__social">
       <li><a href="#" rel="noreferrer">Instagram</a></li>
       <li><a href={withBase("/contact")}>Contact</a></li>
@@ -27,9 +27,10 @@ const year = new Date().getFullYear();
     align-items: center;
     justify-content: space-between;
     padding-block: var(--space-3);
-    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     color: var(--color-text-muted);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
   }
 

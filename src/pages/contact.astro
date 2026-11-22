@@ -2,12 +2,12 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title="Contact" description="Get in touch — placeholder contact form.">
+<BaseLayout title="Contact" description="Your listing deserves better light — get in touch.">
   <section class="container contact">
     <h1>Contact</h1>
     <p>
-      Placeholder contact-page copy. Replace with Strange Light Media's real
-      copy once the design files are ready.
+      Your listing deserves better light. Tell us about the project below
+      and we'll follow up to talk dates and details.
     </p>
 
     <!-- TODO: wire this form to a real backend (Formspree, Netlify Forms,
@@ -51,10 +51,12 @@ import BaseLayout from "../layouts/BaseLayout.astro";
   }
 
   .contact h1 {
+    font-family: var(--font-mono);
+    font-weight: 400;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 1.1rem;
-    color: var(--color-text-muted);
+    letter-spacing: 0.14em;
+    font-size: 0.95rem;
+    color: var(--color-accent);
     margin-bottom: var(--space-2);
   }
 
@@ -67,9 +69,10 @@ import BaseLayout from "../layouts/BaseLayout.astro";
   .contact__form label {
     display: grid;
     gap: 0.35rem;
-    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     color: var(--color-text-muted);
   }
 
@@ -79,7 +82,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     padding: 0.6rem 0.75rem;
     border: 1px solid var(--color-border);
     border-radius: 3px;
-    background: #fff;
+    background: var(--color-bg-alt);
     color: var(--color-text);
   }
 

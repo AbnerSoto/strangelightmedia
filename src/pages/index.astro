@@ -66,7 +66,7 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
 
 <BaseLayout
   title="Strange Light Media"
-  description="Placeholder homepage description — replace with Strange Light Media's real copy."
+  description="We make Sacramento brands impossible to scroll past."
 >
   <section class="hero-banner">
     <canvas
@@ -75,9 +75,10 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
       aria-hidden="true"
     ></canvas>
     <div class="hero container">
-      <h1>Strange Light Media</h1>
+      <p class="hero__eyebrow">Sacramento · Marketing &amp; production</p>
+      <h1>Strange<br />Light<span class="hero__sub">Media</span></h1>
       <p class="hero__tagline">
-        Placeholder tagline — replace with real homepage copy.
+        Marketing that looks like nothing else in the valley.
       </p>
       <a href={withBase("/work")} class="hero__cta">View the work &rarr;</a>
     </div>
@@ -126,14 +127,38 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
     max-width: 700px;
   }
 
+  .hero__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: var(--space-2);
+  }
+
   .hero h1 {
     font-size: clamp(2.75rem, 8vw, 5.5rem);
-    letter-spacing: 0.04em;
+    letter-spacing: -0.02em;
     line-height: 0.95;
   }
 
+  /* "Media", set apart from the stacked "Strange Light" wordmark above
+     it — matches the brand deck's cover slide treatment (a
+     wide-tracked mono subline in the accent color). */
+  .hero__sub {
+    display: block;
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 0.35em;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-top: 0.5em;
+  }
+
   .hero__tagline {
-    margin-top: var(--space-2);
+    margin-top: var(--space-3);
+    max-width: 30ch;
     color: var(--color-text-muted);
   }
 
@@ -207,11 +232,20 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
     if (!banner || !ctx) return;
 
     const LINE_DISTANCE = 170;
-    // Near-black (--color-text) rather than the warm terracotta accent —
-    // a cooler, higher-contrast ink tone reads more technical/edgy than
-    // the friendlier warm hue.
-    const SHAPE_COLOR = "26, 26, 26";
-    const LINE_COLOR = "26, 26, 26";
+    // Film White ambient shapes/lines against the Darkroom background —
+    // the brand deck's accent (Flare) is reserved for the hover
+    // highlight below, "used once per frame, like a light leak."
+    const SHAPE_COLOR: [number, number, number] = [242, 237, 228];
+    const LINE_COLOR = "242, 237, 228";
+    const HOVER_COLOR: [number, number, number] = [255, 90, 54];
+
+    function lerpColor(
+      a: [number, number, number],
+      b: [number, number, number],
+      t: number,
+    ): string {
+      return `${a[0] + (b[0] - a[0]) * t}, ${a[1] + (b[1] - a[1]) * t}, ${a[2] + (b[2] - a[2]) * t}`;
+    }
 
     // Assuming ~60fps: a 2s morph with an average 8s idle gap between
     // morphs works out to ~120 / (120 + 480) = 20% of shapes mid-morph
@@ -495,10 +529,12 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
 
       // Ghost trail for the hovered shape: oldest entries faintest, drawn
       // before the live shapes so the real, brightest copy ends up on top.
+      // Flare orange, same as the hover highlight below — this trail only
+      // ever exists behind the one shape currently being lit up.
       const TRAIL_MAX_ALPHA = 0.14;
       trail.forEach((p, i) => {
         const alpha = TRAIL_MAX_ALPHA * ((i + 1) / trail.length);
-        ctx!.strokeStyle = `rgba(${SHAPE_COLOR}, ${alpha})`;
+        ctx!.strokeStyle = `rgba(${HOVER_COLOR.join(", ")}, ${alpha})`;
         ctx!.lineWidth = 1;
         ctx!.beginPath();
         if (p.sides < 3) {
@@ -522,7 +558,11 @@ const tileSeeds = Array.from({ length: TILE_COUNT }, (_, i) => {
         // full opacity so it reads as a highlight, not a different shape.
         const drawOpacity = c.opacity + (0.45 - c.opacity) * c.hoverAmount;
         const drawLineWidth = c.lineWidth + c.hoverAmount * 1.5;
-        ctx!.strokeStyle = `rgba(${SHAPE_COLOR}, ${drawOpacity})`;
+        // Shifts from the neutral Film White toward Flare orange as
+        // hoverAmount eases in — "the accent used once per frame, like a
+        // light leak" applied to whichever single shape is lit up.
+        const drawColor = lerpColor(SHAPE_COLOR, HOVER_COLOR, c.hoverAmount);
+        ctx!.strokeStyle = `rgba(${drawColor}, ${drawOpacity})`;
         ctx!.lineWidth = drawLineWidth;
         ctx!.beginPath();
 

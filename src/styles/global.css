@@ -1,14 +1,19 @@
-/* Design tokens — placeholder palette/type, swap freely later. */
+/* Design tokens — Strange Light Media brand deck ("Darkroom, plus one
+   flare"): mostly dark, with the accent used sparingly, like a light
+   leak, never as a background for long text. */
 :root {
-  --color-bg: #faf9f7;
-  --color-text: #1a1a1a;
-  --color-text-muted: #6b6b6b;
-  --color-accent: #b85c38;
-  --color-border: #e6e3de;
+  --color-bg: #0e0d0c; /* Darkroom — primary */
+  --color-bg-alt: #1b1916; /* Shadow — second ground (nav, footer, cards) */
+  --color-text: #f2ede4; /* Film White */
+  --color-text-muted: #b5ada2; /* body copy on dark */
+  --color-accent: #ff5a36; /* Flare — accent only */
+  --color-accent-deep: #b5361a; /* Flare, darkened for small text on light */
+  --color-border: #3a3631;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
-    sans-serif;
-  --font-display: "Bebas Neue", var(--font-sans);
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
+  --font-display: "Syne", var(--font-sans);
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
 
   --space-1: 0.5rem;
   --space-2: 1rem;
@@ -75,11 +80,12 @@ p {
 }
 
 h1 {
-  /* Bebas Neue only ships a regular weight — leave font-weight alone
-     rather than letting the browser's default bold h1 synthesize a
-     fake-bold, which distorts a condensed display face like this. */
+  /* Syne ExtraBold per the brand deck's type slide: "big, tight, a
+     little weird." */
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
 }
 
 .container {

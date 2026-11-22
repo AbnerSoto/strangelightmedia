@@ -2,11 +2,20 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { Image } from "astro:assets";
 import headshot from "../assets/about-headshot.jpg";
+
+const services = [
+  { name: "Film & video", body: "Brand films, listing tours and short cuts for social." },
+  { name: "Photography", body: "Property, people and product, shot with real light." },
+  { name: "Social content", body: "Reels, carousels and monthly content that looks like you." },
+  { name: "Campaigns & brand", body: "Strategy, ads and launches built around the visuals." },
+];
+
+const traits = ["Cinematic", "Unexpected", "Sharp", "Rooted"];
 ---
 
 <BaseLayout
   title="About"
-  description="Placeholder about-page description — replace with Strange Light Media's real bio copy."
+  description="We make Sacramento brands impossible to scroll past."
 >
   <section class="container about">
     <div class="about__headshot">
@@ -14,19 +23,33 @@ import headshot from "../assets/about-headshot.jpg";
     </div>
     <div class="about__copy">
       <h1>About</h1>
-      <p>
-        Placeholder bio copy. Replace this paragraph (and the ones below)
-        with Strange Light Media's real about-page content once the design
-        files are ready.
+      <p class="about__lede">
+        Strange Light started as a video production studio. The camera
+        taught us one thing: people remember what they see.
       </p>
       <p>
-        A second placeholder paragraph, so the layout can be previewed with
-        a realistic amount of body copy rather than a single short line.
+        Strange Light Media takes that eye and builds a whole marketing
+        practice around it — strategy, content and campaigns, all led by
+        the image. We make Sacramento brands impossible to scroll past, for
+        agents, builders and local businesses who are tired of looking like
+        everyone else.
       </p>
-      <p>
-        A third, shorter placeholder line — swap all of this out along with
-        the headshot above.
-      </p>
+
+      <ul class="about__traits" aria-label="What we're like">
+        {traits.map((trait) => <li>{trait}</li>)}
+      </ul>
+
+      <h2 class="about__services-label">What we do</h2>
+      <ul class="about__services">
+        {
+          services.map((s) => (
+            <li>
+              <h3>{s.name}</h3>
+              <p>{s.body}</p>
+            </li>
+          ))
+        }
+      </ul>
     </div>
   </section>
 </BaseLayout>
@@ -59,14 +82,81 @@ import headshot from "../assets/about-headshot.jpg";
   }
 
   .about h1 {
+    font-family: var(--font-mono);
+    font-weight: 400;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 1.1rem;
-    color: var(--color-text-muted);
-    margin-bottom: var(--space-2);
+    letter-spacing: 0.14em;
+    font-size: 0.95rem;
+    color: var(--color-accent);
+    margin-bottom: var(--space-3);
+  }
+
+  .about__lede {
+    font-size: 1.15rem;
   }
 
   .about__copy p + p {
     margin-top: var(--space-2);
+    color: var(--color-text-muted);
+  }
+
+  .about__traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    margin-top: var(--space-4);
+  }
+
+  .about__traits li {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.2rem;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+  }
+
+  .about__traits li::before {
+    content: "";
+    display: inline-block;
+    width: 0.4em;
+    height: 0.4em;
+    border-radius: 50%;
+    background: var(--color-accent);
+    margin-right: 0.5em;
+    vertical-align: middle;
+  }
+
+  .about__services-label {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-text-muted);
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .about__services {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  @media (min-width: 500px) {
+    .about__services {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .about__services h3 {
+    font-size: 1rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .about__services p {
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
   }
 </style>

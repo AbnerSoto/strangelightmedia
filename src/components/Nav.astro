@@ -1,7 +1,6 @@
 ---
 import { withBase } from "../lib/url";
-
-const siteName = "Strange Light Media";
+import LogoMark from "../assets/logo-mark.svg";
 
 const links = [
   { href: "/work", label: "Work" },
@@ -13,7 +12,10 @@ const currentPath = Astro.url.pathname;
 
 <header class="site-nav">
   <div class="container site-nav__inner">
-    <a href={withBase("/")} class="site-nav__logo">{siteName}</a>
+    <a href={withBase("/")} class="site-nav__logo" aria-label="Strange Light Media, home">
+      <LogoMark class="site-nav__logo-mark" aria-hidden="true" />
+      <span class="site-nav__logo-text">Strange Light</span>
+    </a>
     <nav aria-label="Main">
       <ul>
         {
@@ -54,9 +56,32 @@ const currentPath = Astro.url.pathname;
   }
 
   .site-nav__logo {
-    font-weight: 600;
-    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--color-text);
+  }
+
+  .site-nav__logo-mark {
+    display: block;
+    width: 1.9rem;
+    height: 1.9rem;
+    flex-shrink: 0;
+  }
+
+  .site-nav__logo-text {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.01em;
     text-transform: uppercase;
+  }
+
+  /* Below ~420px the wordmark crowds the nav links; show the mark alone. */
+  @media (max-width: 419px) {
+    .site-nav__logo-text {
+      display: none;
+    }
   }
 
   nav ul {
@@ -65,8 +90,9 @@ const currentPath = Astro.url.pathname;
   }
 
   nav a {
-    font-size: 0.85rem;
-    letter-spacing: 0.12em;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--color-text-muted);
     transition: color 0.15s ease;

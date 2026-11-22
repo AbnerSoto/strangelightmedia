@@ -11,10 +11,32 @@ simple about/contact — with e-commerce, client proofing, and CMS admin
 tooling intentionally left out. Content is hand-edited in the repo;
 there's no admin UI.
 
-> **Status:** framework complete, content is placeholder. Categories,
-> images, copy, logo, and favicon in this repo are all stand-ins —
-> see "Replacing the placeholder content" below. Real design files are
-> still to come.
+> **Status:** the brand identity from Strange Light Media's brand deck is
+> applied (colors, type, logo mark, voice) — see "Brand identity" below.
+> Gallery images and category names are still placeholders; see
+> "Replacing the placeholder content" below.
+
+## Brand identity
+
+Design tokens in `src/styles/global.css` and the logo mark in
+`src/assets/logo-mark.svg` come from the Strange Light Media brand deck:
+
+- **Color** — "Darkroom, plus one flare": a near-black primary
+  (`--color-bg`, `#0E0D0C`), Film White text (`--color-text`,
+  `#F2EDE4`), and a single accent, Flare orange (`--color-accent`,
+  `#FF5A36`), used sparingly — "like a light leak, never as a
+  background for long text."
+- **Type** — Syne ExtraBold for headlines (`--font-display`), DM Sans
+  for body copy (`--font-sans`), JetBrains Mono for eyebrows/labels/nav
+  (`--font-mono`), all loaded from Google Fonts in `BaseLayout.astro`.
+- **Logo** — a lens with an off-center glowing hot spot ("Core"): a
+  white ring with a smaller orange ring-and-dot offset up-and-right.
+  `src/assets/logo-mark.svg` is the mark alone (nav, and the basis for
+  `public/favicon.svg`/`favicon-32.png`/`apple-touch-icon.png`); pair
+  it with the wordmark everywhere else, same as `src/components/Nav.astro`.
+- **Voice** — confident, not loud; edgy, not crude; plain-spoken, not
+  jargon-heavy; warm, not salesy. Positioning: "We make Sacramento
+  brands impossible to scroll past."
 
 ## Getting started
 
