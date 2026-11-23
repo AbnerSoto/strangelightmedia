@@ -14,7 +14,7 @@ const currentPath = Astro.url.pathname;
   <div class="container site-nav__inner">
     <a href={withBase("/")} class="site-nav__logo" aria-label="Strange Light Media, home">
       <LogoMark class="site-nav__logo-mark" aria-hidden="true" />
-      <span class="site-nav__logo-text">Strange Light</span>
+      <span class="site-nav__logo-text">Strangelight</span>
     </a>
     <nav aria-label="Main">
       <ul>
@@ -70,10 +70,9 @@ const currentPath = Astro.url.pathname;
   }
 
   .site-nav__logo-text {
-    font-family: var(--font-display);
-    font-weight: 800;
+    font-family: var(--font-heading);
     font-size: 1.15rem;
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 
