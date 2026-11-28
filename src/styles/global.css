@@ -18,11 +18,11 @@
   --color-accent-deep: #b5361a; /* Flare, darkened for small text on light */
   --color-border: #3a3631;
 
-  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Helvetica, Arial, sans-serif;
-  --font-display: "Syne", var(--font-sans);
+  --font-display: "Chakra Petch", var(--font-sans);
   --font-heading: "Ethnocentric", var(--font-display);
-  --font-mono: "JetBrains Mono", "Courier New", monospace;
+  --font-mono: "Share Tech Mono", "Courier New", monospace;
 
   --space-1: 0.5rem;
   --space-2: 1rem;
@@ -99,7 +99,7 @@ h1 {
 .container {
   max-width: var(--max-width);
   margin-inline: auto;
-  padding-inline: var(--space-3);
+  padding-inline: clamp(1.5rem, 4vw, 3rem);
 }
 
 /* CSS-columns masonry: simplest possible layout that still gives the
